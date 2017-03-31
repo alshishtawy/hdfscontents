@@ -3,96 +3,49 @@
 # Copyright (c) A
 # Distributed under the terms of the Modified BSD License.
 
+from hdfs3 import HDFileSystem
 from hdfscontents.hdfsio import HDFSManagerMixin
 from hdfscontents.hdfscheckpoints import HDFSCheckpoints
 from notebook.services.contents.manager import ContentsManager
 from notebook.utils import to_os_path
-try: # new notebook
+try:  # new notebook
     from notebook import _tz as tz
 except ImportError: # old notebook
     from notebook.services.contents import tz
-#from hdfs3 import HDFileSystem
 from tornado import web
 from tornado.web import HTTPError
 import mimetypes
 import nbformat
-#import os
-#from contextlib import contextmanager
-#from ipython_genutils.py3compat import getcwd, string_types
-#from ipython_genutils.importstring import import_item
-from traitlets import (
-    Any,
-    Dict,
-    Instance,
-    List,
-    TraitError,
-    Type,
-    Unicode,
-    Bool,
-    validate,
-    default,
-)
+from traitlets import Instance, Integer, Unicode, default
 
 try:  # PY3
     from base64 import encodebytes, decodebytes
 except ImportError:  # PY2
     from base64 import encodestring as encodebytes, decodestring as decodebytes
 
-# TODO: config hardcoded values
-#HDFSManagerMixin.hdfs = HDFileSystem(host='localhost', port=9000)
-#HDFSManagerMixin.root_dir = Unicode('/user/centos/', config=True)
-#HDFSManagerMixin.root_dir = u'/user/centos/'
 
 class HDFSContentsManager(ContentsManager, HDFSManagerMixin):
     """
     ContentsManager that persists to HDFS filesystem local filesystem.
     """
-#    hdfs = HDFSManagerMixin.hdfs
-#    root_dir = HDFSManagerMixin.root_dir
 
-#    HDFSManagerMixin.hdfs = HDFileSystem(host='localhost', port=9000)
-#    HDFSManagerMixin.root_dir = Unicode('/user/centos/', config=True)
-#    HDFSCheckpoints.hdfs = hdfs
-#    HDFSCheckpoints.root_dir = root_dir
+    hdfs_namenode_host = Unicode(u'localhost', config=True, help='The HDFS namenode host')
+    hdfs_namenode_port = Integer(9000, config=True, help='The HDFS namenode port')
+    hdfs_user = Unicode(None, allow_none=True, config=True, help='The HDFS user name')
 
-#    use_atomic_writing = Bool(True, config=True, help=
-#    """By default notebooks are saved on disk on a temporary file and then if succefully written, it replaces the old ones.
-#      This procedure, namely 'atomic_writing', causes some bugs on file system whitout operation order enforcement (like some networked fs).
-#      If set to False, the new notebook is written directly on the old one which could fail (eg: full filesystem or quota )""")
+    root_dir = Unicode(u'/', config=True, help='The HDFS root directory to use')
 
-#    post_save_hook = Any(None, config=True, allow_none=True,
-#                         help="""Python callable or importstring thereof
-#            to be called on the path of a file just saved.
-#            This can be used to process the file on disk,
-#            such as converting the notebook to a script or HTML via nbconvert.
-#            It will be called as (all arguments passed by keyword)::
-#                hook(os_path=os_path, model=model, contents_manager=instance)
-#            - path: the filesystem path to the file just written
-#            - model: the model representing the file
-#            - contents_manager: this ContentsManager instance
-#            """
-#                         )
+    # The HDFS3 object used to interact with HDFS cluster.
+    hdfs = Instance(HDFileSystem, config=True)
 
-#    @validate('post_save_hook')
-#    def _validate_post_save_hook(self, proposal):
-#        value = proposal['value']
-#        if isinstance(value, string_types):
-#            value = import_item(value)
-#        if not callable(value):
-#            raise TraitError("post_save_hook must be callable")
-#        return value
-
-#    def run_post_save_hook(self, model, os_path):
-#        """Run the post-save hook if defined, and log errors"""
-#        if self.post_save_hook:
-#            try:
-#                self.log.debug("Running post-save hook on %s", os_path)
-#                self.post_save_hook(os_path=os_path, model=model, contents_manager=self)
-#            except Exception as e:
-#                self.log.error("Post-save hook failed o-n %s", os_path, exc_info=True)
-#                raise web.HTTPError(500, u'Unexpected error while running post hook save: %s' % e)
+    @default('hdfs')
+    def _default_hdfs(self):
+        return HDFileSystem(host=self.hdfs_namenode_host, port=self.hdfs_namenode_port, user=self.hdfs_user)
 
     def _checkpoints_class_default(self):
+        # TODO: a better way to pass hdfs and root_dir?
+        HDFSCheckpoints.hdfs = self.hdfs
+        HDFSCheckpoints.root_dir = self.root_dir
         return HDFSCheckpoints
 
     # ContentsManager API part 1: methods that must be
@@ -162,7 +115,6 @@ class HDFSContentsManager(ContentsManager, HDFSManagerMixin):
         exists : bool
             Whether the target exists.
         """
-        #return self.file_exists(path) or self.dir_exists(path)
 
         path = path.strip('/')
         hdfs_path = to_os_path(path, self.root_dir)
@@ -176,7 +128,7 @@ class HDFSContentsManager(ContentsManager, HDFSManagerMixin):
         info = self.hdfs.info(hdfs_path)
         last_modified = tz.utcfromtimestamp(info.get(u'last_mod'))
 
-        # TODO: don't have time created! now using last accessed instead
+        # TODO: don't have time created! now storing last accessed instead
         created = tz.utcfromtimestamp(info.get(u'last_access'))
         # Create the base model.
         model = {}
@@ -301,12 +253,12 @@ class HDFSContentsManager(ContentsManager, HDFSManagerMixin):
                     The requested type - 'file', 'notebook', or 'directory'.
                     Will raise HTTPError 400 if the content doesn't match.
                 format : str, optional
-                    The requested format for file hdfscontents. 'text' or 'base64'.
+                    The requested format for file contents. 'text' or 'base64'.
                     Ignored if this returns a notebook or directory model.
                 Returns
                 -------
                 model : dict
-                    the hdfscontents model. If content=True, returns the hdfscontents
+                    the contents model. If content=True, returns the contents
                     of the file or directory as well.
                 """
         path = path.strip('/')
@@ -353,9 +305,9 @@ class HDFSContentsManager(ContentsManager, HDFSManagerMixin):
                     nb = nbformat.from_dict(model['content'])
                     self.check_and_sign(nb, path)
                     self._save_notebook(hdfs_path, nb)
-###                    # One checkpoint should always exist for notebooks.
-###                    if not self.checkpoints.list_checkpoints(path):
-###                        self.create_checkpoint(path)
+                    # One checkpoint should always exist for notebooks.
+                    if not self.checkpoints.list_checkpoints(path):
+                        self.create_checkpoint(path)
                 elif model['type'] == 'file':
                     # Missing format will be handled internally by _save_file.
                     self._save_file(hdfs_path, model['content'], model.get('format'))
@@ -434,14 +386,4 @@ class HDFSContentsManager(ContentsManager, HDFSManagerMixin):
             raise web.HTTPError(500, u'Unknown error renaming file: %s %s' % (old_path, e))
 
     def info_string(self):
-          return "Serving notebooks from HDFS directory: %s" % self.root_dir
-
-#    def get_kernel_path(self, path, model=None):
-#        """Return the initial API path of  a kernel associated with a given notebook"""
-#        if self.dir_exists(path):
-#            return path
-#        if '/' in path:
-#            parent_dir = path.rsplit('/', 1)[0]
-#        else:
-#            parent_dir = ''
-#        return parent_dir
+        return "Serving notebooks from HDFS directory: %s" % self.root_dir

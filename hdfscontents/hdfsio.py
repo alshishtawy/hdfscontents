@@ -7,47 +7,34 @@ Utilities for file-based Contents/Checkpoints managers.
 
 from contextlib import contextmanager
 import errno
-#import io
 import os
-#import shutil
-from hdfs3 import HDFileSystem
-
 from tornado.web import HTTPError
-
 from notebook.utils import (
     to_api_path,
     to_os_path,
 )
 import nbformat
-
 from ipython_genutils.py3compat import str_to_unicode
-
 from traitlets.config import Configurable
 from traitlets import Bool, Integer, Unicode, default, Instance
-
 try:  # PY3
     from base64 import encodebytes, decodebytes
 except ImportError:  # PY2
     from base64 import encodestring as encodebytes, decodestring as decodebytes
 
-#from hdfscontents.hdfsmanager import HDFSContentsManager
 
 def path_to_intermediate(path):
-    '''Name of the intermediate file used in atomic writes.
-    The .~ prefix will make Dropbox ignore the temporary file.'''
+    """Name of the intermediate file used in atomic writes.
+    The .~ prefix will make Dropbox ignore the temporary file."""
     dirname, basename = os.path.split(path)
     return os.path.join(dirname, '.~' + basename)
 
+
 def path_to_invalid(path):
-    '''Name of invalid file after a failed atomic write and subsequent read.'''
+    """Name of invalid file after a failed atomic write and subsequent read."""
     dirname, basename = os.path.split(path)
     return os.path.join(dirname, basename + '.invalid')
 
-
-#    def _hdfs_copy2_safe(self, src, dst):
-#        if self._hdfs_file_exists(dst):
-#            self.hdfs.rm(dst)
-#        self.hdfs.cp(src, dst)
 
 def hdfs_copy_file(hdfs, src, dst):
         chunk = 2 ** 16
@@ -63,12 +50,14 @@ def hdfs_copy_file(hdfs, src, dst):
         f1.flush()
         f2.close()
 
+
 def hdfs_replace_file(hdfs, src, dst):
     """ replace dst with src
     switches between os.replace or os.rename based on python 2.7 or python 3
     """
     hdfs.rm(dst)
     hdfs.mv(src, dst)
+
 
 def hdfs_file_exists(hdfs, hdfs_path):
     return hdfs.exists(hdfs_path) and hdfs.info(hdfs_path).get(u'kind') == u'file'
@@ -82,12 +71,11 @@ def atomic_writing(hdfs, hdfs_path):
     disk and the temporary file is removed.
     Parameters
     ----------
-    path : str
+    hdfs : HDFileSystem
+      the hdfs3 object
+    hdfs_path : str
       The target file to write to.
     """
-    # realpath doesn't work on Windows: http://bugs.python.org/issue9949
-    # Luckily, we only need to resolve the file itself being a symlink, not
-    # any of its directories, so this will suffice:
 
     tmp_path = path_to_intermediate(hdfs_path)
 
@@ -122,15 +110,10 @@ def _simple_writing(hdfs, hdfs_path):
     disk and the temporary file is removed.
     Parameters
     ----------
-    path : str
+    hdfs : HDFileSystem
+      the hdfs3 object
+    hdfs_path : str
       The target file to write to.
-    text : bool, optional
-      Whether to open the file in text mode (i.e. to write unicode). Default is
-      True.
-    encoding : str, optional
-      The encoding to use for files opened in text mode. Default is UTF-8.
-    **kwargs
-      Passed to :func:`io.open`.
     """
 
     # Text mode is not supported in HDFS3
@@ -149,30 +132,20 @@ def _simple_writing(hdfs, hdfs_path):
 
 
 class HDFSManagerMixin(Configurable):
-
-    #root_dir = None
-
-    hdfs_namenode_host = Unicode(u'localhost', config=True, help='The HDFS namenode host')
-    hdfs_namenode_port = Integer(9000, config=True, help='The HDFS namenode port')
-    root_dir = Unicode(u'/', config=True, help='The HDFS root directory to use')
-    hdfs_user = Unicode(None, allow_none=True, config=True, help='The HDFS user name')
-
-    # The HDFS3 object used to intract with hdfs. Should be initialized by HDFSContentsManager class
-
-    hdfs = Instance(HDFileSystem, config=True)
-
-    @default('hdfs')
-    def _default_hdfs(self):
-     #   self.root_dir = self.hdfs_root_dir
-        return HDFileSystem(host=self.hdfs_namenode_host, port=self.hdfs_namenode_port, user=self.hdfs_user)
-
-
-#    root_dir = Unicode()
-#
-#    @default('root_dir')
-#    def _default_root_dir(self):
-#        return self.hdfs_root_dir
-
+    """
+    Mixin for ContentsAPI classes that interact with the HDFS filesystem.
+    Provides facilities for reading, writing, and copying both notebooks and
+    generic files.
+    Shared by HDFSContentsManager and HDFSCheckpoints.
+    Note
+    ----
+    Classes using this mixin must provide the following attributes:
+    root_dir : unicode
+        A directory against against which API-style paths are to be resolved.
+    hdfs : HDFileSystem
+        To communicate with the HDFS cluster
+    log : logging.Logger
+    """
 
     use_atomic_writing = Bool(True, config=True, help=
     """By default notebooks are saved on disk on a temporary file and then if succefully written, it replaces the old ones.
@@ -183,7 +156,7 @@ class HDFSManagerMixin(Configurable):
         """Does the directory exists in HDFS filesystem?
         Parameters
         ----------
-        path : string
+        hdfs_path : string
             The absolute HDFS path to check
         Returns
         -------
@@ -202,7 +175,6 @@ class HDFSManagerMixin(Configurable):
         If it doesn't exist, try to create it and protect against a race condition
         if another process is doing the same.
 
-        The default permissions are 755, which differ from os.makedirs default of 777.
         """
         if not self.hdfs.exists(hdfs_path):
             try:
@@ -215,9 +187,10 @@ class HDFSManagerMixin(Configurable):
 
     def _hdfs_is_hidden(self, hdfs_path):
         """Is path in HDFS hidden directory or file?
+        checks if any part in the path starts with a dot '.'
         Parameters
         ----------
-        path : string
+        hdfs_path : string
             The path to check. This is an absolute HDFS path).
         Returns
         -------
@@ -225,11 +198,6 @@ class HDFSManagerMixin(Configurable):
             Whether the path is hidden.
         """
 
- #       # TODO: Should raise an exception?
- #       if not self.hdfs.exists(hdfs_path):
- #           return True
-
-        # TODO: Do we have other hidden flags to check in HDFS?
         if any(part.startswith('.') for part in hdfs_path.split('/')):
             return True
         return False
@@ -237,10 +205,10 @@ class HDFSManagerMixin(Configurable):
     def _hdfs_file_exists(self, hdfs_path):
         """Does a file exist at the given path?
         Like os.path.isfile
-        Override this method in subclasses.
+
         Parameters
         ----------
-        path : string
+        hdfs_path : string
             The absolute HDFS path of a file to check for.
         Returns
         -------
@@ -379,4 +347,3 @@ class HDFSManagerMixin(Configurable):
 
         with self.atomic_writing(hdfs_path) as f:
             f.write(bcontent)
-
