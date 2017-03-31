@@ -2,8 +2,6 @@
 HDFS-based Checkpoints implementations.
 """
 import os
-#import shutil
-
 from hdfscontents.hdfsio import HDFSManagerMixin
 from tornado.web import HTTPError
 from notebook.services.contents.checkpoints import Checkpoints
@@ -13,8 +11,6 @@ try:  # new notebook
     from notebook import _tz as tz
 except ImportError: # old notebook
     from notebook.services.contents import tz
-
-# from hdfscontents.hdfsmanager import HDFSContentsManager
 
 
 class HDFSCheckpoints(HDFSManagerMixin, Checkpoints):
@@ -34,8 +30,8 @@ class HDFSCheckpoints(HDFSManagerMixin, Checkpoints):
         """,
     )
 
-    # The HDFS3 object used to intract with hdfs. Should be initialized by HDFSContentsManager class
-
+    hdfs = None
+    root_dire = None
 
     # ContentsManager-dependent checkpoint API
     def create_checkpoint(self, contents_mgr, path):
@@ -81,7 +77,6 @@ class HDFSCheckpoints(HDFSManagerMixin, Checkpoints):
         """list the checkpoints for a given file
         This contents manager currently only supports one checkpoint per file.
         """
-        self.log.debug('###the path is %s' % path)
         path = path.strip('/')
         checkpoint_id = "checkpoint"
         cp_path = self.checkpoint_path(checkpoint_id, path)
@@ -103,7 +98,6 @@ class HDFSCheckpoints(HDFSManagerMixin, Checkpoints):
             ext=ext,
         )
         hdfs_path = self._get_hdfs_path(path=parent)
-        self.log.debug('hdfs_path is %s and checkpoint dir is %s' % (hdfs_path, self.checkpoint_dir))
         cp_dir = os.path.join(hdfs_path, self.checkpoint_dir)
         with self.perm_to_403():
             self._hdfs_ensure_dir_exists(cp_dir)
