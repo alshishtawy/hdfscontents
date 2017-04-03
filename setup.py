@@ -13,12 +13,15 @@ setup(
     description=("Jupyter content manager that uses the HDFS filesystem"),
     license="Apache License 2.0",
     keywords="Jupyter, HDFS",
-    url="https://github.com",
+    url="https://github.com/alshishtawy/hdfscontents",
     packages=['hdfscontents', 'tests'],
     long_description=read('README.rst'),
     classifiers=[
         "Development Status :: 3 - Alpha",
+        "Framework :: IPython",
         "Topic :: Utilities",
-        "License :: OSI Approved :: BSD License",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3",
     ], install_requires=['traitlets', 'notebook', 'hdfs3', 'tornado', 'nbformat', 'ipython_genutils']
 )
