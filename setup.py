@@ -7,10 +7,11 @@ def read(fname):
 
 setup(
     name="hdfscontents",
-    version="0.1.0",
+    version="0.2",
     author="Ahmad Al-Shishtawy",
     author_email="alshishtawy@gmail.com",
-    description=("Jupyter content manager that uses the HDFS filesystem"),
+    description="Jupyter content manager that uses the HDFS filesystem",
+    download_url = 'https://github.com/alshishtawy/hdfscontents/archive/0.2.tar.gz',
     license="Apache License 2.0",
     keywords="Jupyter, HDFS",
     url="https://github.com/alshishtawy/hdfscontents",
