@@ -10,7 +10,9 @@ Install
 
 1) Install HDFS3_.
 
-2) Clone this repository then pip install .
+2) Install HDFSContents Manager
+::
+  pip install jupyter-hdfscontents
 
 
 Run
